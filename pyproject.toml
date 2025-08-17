@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canon_deployment"
+version = "0.1.0"
+description = "Canon deployment helper project"
+authors = [ { name = "Your Name", email = "you@example.com" } ]
+readme = "README.md"
+license = { text = "MIT" }
+
+# If you want to declare runtime dependencies here, list them below.
+# For now the project uses requirements.txt for dependency management.
+dependencies = []

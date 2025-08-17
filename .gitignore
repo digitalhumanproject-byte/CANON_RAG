@@ -1,0 +1,52 @@
+# Environment variables
+.env
+.streamlit/secrets.toml
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Data and large assets
+processed_data/
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+
+# Editor directories and files
+.idea/
+
+# Coverage
+.coverage
+htmlcov/
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec

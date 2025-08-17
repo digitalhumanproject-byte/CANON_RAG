@@ -38,6 +38,10 @@ processed_data/
 *.tif
 *.tiff
 
+# Allow committing the processed_data folder (override above ignore rules)
+!processed_data/
+!processed_data/**
+
 # Editor directories and files
 .idea/
 

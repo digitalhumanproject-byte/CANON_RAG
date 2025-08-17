@@ -29,5 +29,5 @@ Quick start
     .\.venv\Scripts\Activate.ps1; python app.py
 
 Notes
-- The `processed_data/` folder contains large images and is intentionally excluded by `.gitignore`.
+- The `processed_data/` folder contains processed images and is included in this repository so the app can run without additional ingestion steps.
 - Add a repository description, topics, and a proper author/email in `pyproject.toml` before publishing.

@@ -153,7 +153,7 @@ def get_gemini_response(question, context, chat_history=None, image=None):
         history_text = "\n".join([f"User: {m['text']}" if m['role']=='user' else f"Assistant: {m['text']}" for m in (chat_history or [])])
 
         prompt_parts = [
-            f"""
+            """
             You are an expert assistant specialized in analyzing technical manuals for complex machinery like ultrasound equipment.
             Your task is to answer the user's question based ONLY on the provided context from the manual and the recent conversation below.
             If the user provides an image, use it as part of their query (e.g., "What is this button?" with an image of a button).
@@ -304,39 +304,7 @@ else:
                         st.image(processed_preview, caption="Preview", use_container_width=True)
                     except Exception as e:
                         st.error(f"Error processing image preview: {e}")
-                # Add a visible camera trigger button for mobile devices that
-                # programmatically clicks the underlying file input to open
-                # the native camera. This uses a best-effort query for the
-                # first image file input on the page (Streamlit renders one
-                # for the camera_input widget). On mobile this should open
-                # the camera and return the selected photo into the widget.
-                st.markdown(
-                    """
-                    <div style="text-align:center; margin-top:8px;">
-                      <button id="openCameraBtn" style="
-                        background:#0f62fe; color:white; border:none; padding:12px 18px; 
-                        font-size:18px; border-radius:8px; width:100%; max-width:260px;">
-                        📷 Open Camera
-                      </button>
-                    </div>
-                    <script>
-                    (function(){
-                      const btn = document.getElementById('openCameraBtn');
-                      if(!btn) return;
-                      btn.addEventListener('click', function(){
-                        // Try to find an input that accepts images (camera_input creates one).
-                        const input = document.querySelector('input[type="file"][accept*="image"]');
-                        if(input){
-                          try{ input.click(); } catch(e){ alert('Unable to open camera: ' + e); }
-                        } else {
-                          alert('Camera input not found. Use the camera widget above or refresh the page.');
-                        }
-                      });
-                    })();
-                    </script>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                # (Removed explicit camera trigger button — use the native camera widget or uploader)
             with col2:
                 user_question = st.text_area("Ask a question about the manual:", height=150)
 

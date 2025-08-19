@@ -4,3 +4,4 @@ python-dotenv
 PyMuPDF
 Pillow
 tqdm
+requests

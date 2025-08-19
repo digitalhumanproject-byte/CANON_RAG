@@ -10,6 +10,87 @@ from dotenv import load_dotenv
 # --- Load Environment Variables (for local testing) ---
 load_dotenv()
 
+try:
+    # Pillow >= 9.1 exposes Resampling
+    RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
+except Exception:
+    # Older Pillow versions: pick a reasonable fallback without raising at import time
+    RESAMPLE_LANCZOS = getattr(Image, 'LANCZOS', getattr(Image, 'ANTIALIAS', getattr(Image, 'BICUBIC', 1)))
+
+
+def process_image_for_upload(image_bytes, rotate=0, crop_pct=0, resize_pct=100, max_kb=2048, max_dim=1600):
+    """Process raw image bytes: rotate, center-crop, resize and compress to meet max_kb.
+
+    Returns a tuple (processed_bytes, pil_image).
+    - image_bytes: original bytes
+    - rotate, crop_pct, resize_pct: transforms (same semantics as the UI)
+    - max_kb: target maximum size in KB (best-effort)
+    - max_dim: maximum width/height in pixels to cap dimensions
+    """
+    try:
+        pil = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+
+        # Rotate
+        if rotate:
+            pil = pil.rotate(rotate, expand=True)
+
+        # Center crop
+        if crop_pct and crop_pct > 0:
+            w, h = pil.size
+            cp = crop_pct / 100.0
+            crop_w = int(w * cp)
+            crop_h = int(h * cp)
+            left = max(0, (w - crop_w) // 2)
+            top = max(0, (h - crop_h) // 2)
+            pil = pil.crop((left, top, left + crop_w, top + crop_h))
+
+        # Resize by percent
+        if resize_pct and resize_pct != 100:
+            new_w = max(1, int(pil.width * resize_pct / 100.0))
+            new_h = max(1, int(pil.height * resize_pct / 100.0))
+            pil = pil.resize((new_w, new_h), RESAMPLE_LANCZOS)
+
+        # Also cap maximum dimensions to avoid huge uploads
+        if max_dim and max(pil.size) > max_dim:
+            scale = max_dim / float(max(pil.size))
+            new_w = max(1, int(pil.width * scale))
+            new_h = max(1, int(pil.height * scale))
+            pil = pil.resize((new_w, new_h), Image.LANCZOS)
+            pil = pil.resize((new_w, new_h), RESAMPLE_LANCZOS)
+
+        # Compress to meet max_kb (best-effort) by lowering JPEG quality
+        target_bytes = max(1, int(max_kb * 1024))
+        quality = 95
+        buf = io.BytesIO()
+        pil.save(buf, format='JPEG', quality=quality)
+        data = buf.getvalue()
+
+        # If already under target, return
+        while len(data) > target_bytes and quality >= 30:
+            quality -= 5
+            buf = io.BytesIO()
+            pil.save(buf, format='JPEG', quality=quality)
+            data = buf.getvalue()
+
+        # If still too large, downscale a bit and retry (avoid infinite loop)
+        if len(data) > target_bytes:
+            # downscale by 90% and try again a few times
+            for _ in range(3):
+                new_w = max(1, int(pil.width * 0.9))
+                new_h = max(1, int(pil.height * 0.9))
+                pil = pil.resize((new_w, new_h), RESAMPLE_LANCZOS)
+                quality = max(20, quality - 5)
+                buf = io.BytesIO()
+                pil.save(buf, format='JPEG', quality=quality)
+                data = buf.getvalue()
+                if len(data) <= target_bytes:
+                    break
+
+        return data, pil
+    except Exception as e:
+        # On failure, return original bytes as best-effort
+        return image_bytes, None
+
 # --- Configuration & Initialization ---
 PROCESSED_DATA_DIR = "processed_data"
 st.set_page_config(page_title="AI Manual Assistant", page_icon="🤖", layout="wide")
@@ -278,30 +359,25 @@ else:
                     if size_kb > max_kb:
                         st.warning(f"Image exceeds maximum size of {max_kb} KB. Please upload a smaller image or use resize.")
                     try:
-                        pil = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-                        # Apply rotate
+                        # Use helper to apply all transforms and compress to max size
                         rotate = st.session_state.get('image_rotate', 0)
-                        if rotate:
-                            pil = pil.rotate(rotate, expand=True)
-                        # Apply crop (center)
                         crop_pct = st.session_state.get('image_crop_pct', 0)
-                        if crop_pct and crop_pct > 0:
-                            w, h = pil.size
-                            cp = crop_pct / 100.0
-                            crop_w = int(w * cp)
-                            crop_h = int(h * cp)
-                            left = max(0, (w - crop_w) // 2)
-                            top = max(0, (h - crop_h) // 2)
-                            pil = pil.crop((left, top, left + crop_w, top + crop_h))
-                        # Apply resize
                         resize_pct = st.session_state.get('image_resize_pct', 100)
-                        if resize_pct and resize_pct != 100:
-                            new_w = max(1, int(pil.width * resize_pct / 100.0))
-                            new_h = max(1, int(pil.height * resize_pct / 100.0))
-                            pil = pil.resize((new_w, new_h), Image.LANCZOS)
+                        max_kb = st.session_state.get('max_image_kb', 2048)
+
+                        processed_bytes, pil = process_image_for_upload(
+                            image_bytes,
+                            rotate=rotate,
+                            crop_pct=crop_pct,
+                            resize_pct=resize_pct,
+                            max_kb=max_kb,
+                        )
 
                         processed_preview = pil
-                        st.image(processed_preview, caption="Preview", use_container_width=True)
+                        if processed_preview is not None:
+                            st.image(processed_preview, caption=f"Preview (≈{len(processed_bytes)//1024} KB)", use_container_width=True)
+                        else:
+                            st.warning("Preview unavailable for this image.")
                     except Exception as e:
                         st.error(f"Error processing image preview: {e}")
                 # (Removed explicit camera trigger button — use the native camera widget or uploader)
@@ -330,25 +406,19 @@ else:
                             else:
                                 image_bytes2 = image_bytes
 
-                            pil_image = Image.open(io.BytesIO(image_bytes2)).convert('RGB')
-                            # Apply same transforms as preview
+                            # Use helper to apply transforms and compress to max size before sending
                             rotate = st.session_state.get('image_rotate', 0)
-                            if rotate:
-                                pil_image = pil_image.rotate(rotate, expand=True)
                             crop_pct = st.session_state.get('image_crop_pct', 0)
-                            if crop_pct and crop_pct > 0:
-                                w, h = pil_image.size
-                                cp = crop_pct / 100.0
-                                crop_w = int(w * cp)
-                                crop_h = int(h * cp)
-                                left = max(0, (w - crop_w) // 2)
-                                top = max(0, (h - crop_h) // 2)
-                                pil_image = pil_image.crop((left, top, left + crop_w, top + crop_h))
                             resize_pct = st.session_state.get('image_resize_pct', 100)
-                            if resize_pct and resize_pct != 100:
-                                new_w = max(1, int(pil_image.width * resize_pct / 100.0))
-                                new_h = max(1, int(pil_image.height * resize_pct / 100.0))
-                                pil_image = pil_image.resize((new_w, new_h), Image.LANCZOS)
+                            max_kb = st.session_state.get('max_image_kb', 2048)
+
+                            processed_bytes2, pil_image = process_image_for_upload(
+                                image_bytes2,
+                                rotate=rotate,
+                                crop_pct=crop_pct,
+                                resize_pct=resize_pct,
+                                max_kb=max_kb,
+                            )
                         except Exception as e:
                             st.error(f"Error preparing image for model: {e}")
                     full_context = "\n\n".join([f"Page {item['page']}:\n{item['content']}" for item in document_content])
